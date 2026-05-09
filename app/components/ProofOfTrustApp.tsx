@@ -133,19 +133,95 @@ export default function ProofOfTrustApp() {
     setLoading(true);
     let finalVerdict: "verified" | "hallucination" = verdict as any;
 
-    // AI Logic analysis
+    // AI Logic analysis with proper hallucination detection
     if (verdict === "auto") {
       setStatus({ type: "loading", message: "🧠 AI Judge: Analyzing factual accuracy..." });
       await new Promise(r => setTimeout(r, 2500)); 
       
-      const content = (input.prompt + " " + input.response).toLowerCase();
-      const hallucMarkers = ["i don't know", "uncertain", "2025", "future", "conflict", "attack", "always", "never"];
-      const hasHallucination = hallucMarkers.some(m => content.includes(m));
+      const prompt = input.prompt.toLowerCase();
+      const response = input.response.toLowerCase();
+      const combined = (prompt + " " + response).toLowerCase();
+
+      // Advanced hallucination detection
+      let hallucScore = 0;
+
+      // 1. Check for direct contradiction (response contradicts the prompt)
+      const contradictionPatterns = [
+        { prompt: ["what"], negative: ["not ", "no ", "never "] },
+        { prompt: ["is", "are"], negative: ["is not", "are not", "isn't", "aren't"] }
+      ];
+      if (prompt.includes("is") && response.includes("is not")) hallucScore += 30;
       
-      finalVerdict = hasHallucination ? "hallucination" : "verified";
+      // 2. Definitive false markers in response
+      const falseMarkers = [
+        "i'm not sure",
+        "i don't know",
+        "i cannot",
+        "i'm unable",
+        "hypothetically",
+        "if it were",
+        "potentially",
+        "supposedly",
+        "allegedly",
+        "rumor has it",
+        "some say",
+        "it's possible that"
+      ];
+      if (falseMarkers.some(m => response.includes(m))) hallucScore += 25;
+
+      // 3. Future/uncertain predictions presented as fact
+      const futureMarkers = ["will happen", "will be", "future will", "next year", "in 2025", "in 2026", "next decade"];
+      if (futureMarkers.some(m => combined.includes(m))) hallucScore += 20;
+
+      // 4. Check for logical contradictions within response
+      const selfContradictions = [
+        { a: "always", b: "sometimes" },
+        { a: "never", b: "occasionally" },
+        { a: "all", b: "none" }
+      ];
+      selfContradictions.forEach(pair => {
+        if (response.includes(pair.a) && response.includes(pair.b)) hallucScore += 25;
+      });
+
+      // 5. Extreme or absolute claims (often hallucinations)
+      const extremeClaims = ["100% sure", "absolutely always", "completely impossible", "totally wrong", "definitively"];
+      if (extremeClaims.some(c => response.includes(c))) hallucScore += 15;
+
+      // 6. Made-up citations or sources
+      if (response.includes("according to") && !response.includes("wikipedia") && !response.includes("source") && response.length < 100) {
+        hallucScore += 20;
+      }
+
+      // 7. Factual inaccuracies (basic knowledge)
+      const factualErrors = [
+        { wrong: "france is in africa", right: "france" },
+        { wrong: "paris is in germany", right: "france" },
+        { wrong: "earth is flat", right: "earth" },
+        { wrong: "water boils at 50", right: "boil" },
+        { wrong: "2+2=5", right: "2+2" },
+        { wrong: "moon is made of cheese", right: "moon" }
+      ];
+      factualErrors.forEach(error => {
+        if (combined.includes(error.wrong)) hallucScore += 35;
+      });
+
+      // 8. Response doesn't match prompt intent
+      if (prompt.includes("what") && response.length < 20) hallucScore += 15; // Vague answer to specific question
+      if (prompt.includes("how") && !response.includes("step") && !response.includes("way") && response.length < 50) hallucScore += 15;
+
+      // 9. Excessive uncertainty (e.g., hedging everything)
+      const uncertainWords = ["might", "could", "possibly", "perhaps", "maybe"];
+      const uncertainCount = uncertainWords.filter(w => response.includes(w)).length;
+      if (uncertainCount >= 3) hallucScore += 20;
+
+      // Determine verdict based on hallucination score
+      finalVerdict = hallucScore >= 30 ? "hallucination" : "verified";
+      
       setStatus({ 
         type: "loading", 
-        message: finalVerdict === "hallucination" ? "⚠️ HALLUCINATION DETECTED" : "✅ RESPONSE VERIFIED" 
+        message: finalVerdict === "hallucination" 
+          ? `⚠️ HALLUCINATION DETECTED (Score: ${hallucScore})` 
+          : `✅ RESPONSE VERIFIED (Confidence: ${hallucScore < 15 ? "High" : "Medium"})`
       });
       await new Promise(r => setTimeout(r, 800));
     }
@@ -159,23 +235,38 @@ export default function ProofOfTrustApp() {
         const verdict_text = finalVerdict === "verified" ? "VERIFIED" : "HALLUCINATION";
         const memoText = `POT|${input.model}|${verdict_text}|${input.confidence}`;
         
-        const tx = new Transaction().add(
-          new TransactionInstruction({
-            keys: [{ pubkey: publicKey, isSigner: true, isWritable: false }],
-            programId: new PublicKey("Memo1UhkJR6FEZeaasQRuetnUsnZUPUv6A27f7W2GE7"),
-            data: Buffer.from(memoText, "utf-8"),
-          })
-        );
+        try {
+          // Get recent blockhash first
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("finalized");
+          
+          const tx = new Transaction({
+            recentBlockhash: blockhash,
+            feePayer: publicKey,
+          }).add(
+            new TransactionInstruction({
+              keys: [{ pubkey: publicKey, isSigner: true, isWritable: false }],
+              programId: new PublicKey("Memo1UhkJR6FEZeaasQRuetnUsnZUPUv6A27f7W2GE7"),
+              data: Buffer.from(memoText, "utf-8"),
+            })
+          );
 
-        signature = await sendTransaction(tx, connection);
-        
-        setStatus({ type: "loading", message: "⏳ Confirming transaction..." });
-        
-        const latest = await connection.getLatestBlockhash();
-        await connection.confirmTransaction({
-          signature,
-          ...latest
-        }, "confirmed");
+          signature = await sendTransaction(tx, connection);
+          
+          setStatus({ type: "loading", message: "⏳ Confirming transaction..." });
+          
+          // Confirm with proper parameters
+          await connection.confirmTransaction(
+            {
+              signature,
+              blockhash,
+              lastValidBlockHeight,
+            },
+            "confirmed"
+          );
+        } catch (txError: any) {
+          console.error("Transaction error:", txError);
+          throw new Error(txError.message || "Transaction failed");
+        }
       }
 
       const newAudit = { 
