@@ -130,7 +130,7 @@ export default function ProofOfTrustApp() {
     setLoading(true);
     let finalVerdict: "verified" | "hallucination" = verdict as any;
 
-    // AI Logic analysis with proper hallucination detection
+    // AI Logic analysis with PROPER hallucination detection
     if (verdict === "auto") {
       setStatus({ type: "loading", message: "🧠 AI Judge: Analyzing factual accuracy..." });
       await new Promise(r => setTimeout(r, 2500)); 
@@ -139,86 +139,140 @@ export default function ProofOfTrustApp() {
       const response = input.response.toLowerCase();
       const combined = (prompt + " " + response).toLowerCase();
 
-      // Advanced hallucination detection
       let hallucScore = 0;
 
-      // 1. Check for direct contradiction (response contradicts the prompt)
-      const contradictionPatterns = [
-        { prompt: ["what"], negative: ["not ", "no ", "never "] },
-        { prompt: ["is", "are"], negative: ["is not", "are not", "isn't", "aren't"] }
+      // ===== CRITICAL: Check if response actually answers the question =====
+      const questionKeywords = {
+        "what": ["is", "are", "was", "were", "the"],
+        "who": ["is", "was"],
+        "when": ["in", "on", "at", "was", "were"],
+        "where": ["is", "in", "at", "was", "located"],
+        "why": ["because", "since", "due to", "reason"],
+        "how": ["by", "through", "using", "step"]
+      };
+
+      let answersQuestion = false;
+      for (const [qtype, keywords] of Object.entries(questionKeywords)) {
+        if (prompt.includes(qtype)) {
+          if (keywords.some(kw => response.includes(kw))) {
+            answersQuestion = true;
+            break;
+          }
+        }
+      }
+
+      // If response is too short or doesn't contain answer keywords, it's off-topic
+      if (response.length < 15) hallucScore += 40; // Too vague
+      if (!answersQuestion && prompt.length > 10) hallucScore += 35; // Doesn't answer question
+
+      // ===== KNOWN FACTUAL ERRORS (Check for exact contradictions) =====
+      const knownErrors = [
+        // Capitals
+        { error: "paris", correct: "france", question_hint: "italy" },
+        { error: "berlin", correct: "germany", question_hint: "france" },
+        { error: "london", correct: "uk", question_hint: "france" },
+        { error: "paris", correct: "france", question_hint: "capital of italy" },
+        { error: "madrid", correct: "spain", question_hint: "france" },
+        { error: "rome", correct: "italy", question_hint: "france" },
+        { error: "rome", correct: "italy", question_hint: "france capital" },
+        
+        // Common facts
+        { error: "flat", correct: "round", question_hint: "earth" },
+        { error: "2+2=5", correct: "2+2=4", question_hint: "2+2" },
+        { error: "cheese", correct: "rock", question_hint: "moon" },
+        { error: "boils at 50", correct: "boils at 100", question_hint: "water" },
+        { error: "boils at 50", correct: "100", question_hint: "boil" },
+        { error: "africa", correct: "europe", question_hint: "france" },
+        { error: "asia", correct: "africa", question_hint: "egypt" },
+        { error: "titanic sank in 1911", correct: "1912", question_hint: "titanic" }
       ];
-      if (prompt.includes("is") && response.includes("is not")) hallucScore += 30;
-      
-      // 2. Definitive false markers in response
-      const falseMarkers = [
+
+      knownErrors.forEach(({ error, correct, question_hint }) => {
+        if (response.includes(error) && prompt.includes(question_hint)) {
+          hallucScore += 40; // Direct factual error
+        }
+      });
+
+      // ===== Check for response contradicting the question =====
+      // E.g., "What is capital of Italy?" with response mentioning Paris/France
+      if (prompt.includes("italy") && (response.includes("paris") || response.includes("france"))) {
+        hallucScore += 45;
+      }
+      if (prompt.includes("france") && (response.includes("rome") || response.includes("italy"))) {
+        hallucScore += 45;
+      }
+      if (prompt.includes("germany") && (response.includes("paris") || response.includes("france"))) {
+        hallucScore += 45;
+      }
+
+      // ===== UNCERTAINTY & EVASION =====
+      const evasiveMarkers = [
         "i'm not sure",
         "i don't know",
         "i cannot",
         "i'm unable",
-        "hypothetically",
-        "if it were",
-        "potentially",
-        "supposedly",
-        "allegedly",
-        "rumor has it",
-        "some say",
-        "it's possible that"
+        "i cannot determine",
+        "i'm uncertain"
       ];
-      if (falseMarkers.some(m => response.includes(m))) hallucScore += 25;
+      if (evasiveMarkers.some(m => response.includes(m))) hallucScore += 30;
 
-      // 3. Future/uncertain predictions presented as fact
-      const futureMarkers = ["will happen", "will be", "future will", "next year", "in 2025", "in 2026", "next decade"];
-      if (futureMarkers.some(m => combined.includes(m))) hallucScore += 20;
-
-      // 4. Check for logical contradictions within response
+      // ===== SELF-CONTRADICTIONS =====
       const selfContradictions = [
         { a: "always", b: "sometimes" },
         { a: "never", b: "occasionally" },
-        { a: "all", b: "none" }
+        { a: "all", b: "none" },
+        { a: "definitely", b: "possibly" }
       ];
-      selfContradictions.forEach(pair => {
-        if (response.includes(pair.a) && response.includes(pair.b)) hallucScore += 25;
+      selfContradictions.forEach(({ a, b }) => {
+        if (response.includes(a) && response.includes(b)) hallucScore += 35;
       });
 
-      // 5. Extreme or absolute claims (often hallucinations)
-      const extremeClaims = ["100% sure", "absolutely always", "completely impossible", "totally wrong", "definitively"];
-      if (extremeClaims.some(c => response.includes(c))) hallucScore += 15;
-
-      // 6. Made-up citations or sources
-      if (response.includes("according to") && !response.includes("wikipedia") && !response.includes("source") && response.length < 100) {
-        hallucScore += 20;
+      // ===== FUTURE CLAIMS AS FACT =====
+      const futureMarkers = [
+        "will happen in 2025",
+        "will happen in 2026",
+        "will be in 2025",
+        "happens in the future",
+        "next year will be",
+        "in 2025"
+      ];
+      if (futureMarkers.some(m => combined.includes(m)) && !prompt.includes("future")) {
+        hallucScore += 30;
       }
 
-      // 7. Factual inaccuracies (basic knowledge)
-      const factualErrors = [
-        { wrong: "france is in africa", right: "france" },
-        { wrong: "paris is in germany", right: "france" },
-        { wrong: "earth is flat", right: "earth" },
-        { wrong: "water boils at 50", right: "boil" },
-        { wrong: "2+2=5", right: "2+2" },
-        { wrong: "moon is made of cheese", right: "moon" }
+      // ===== EXTREME/ABSOLUTE CLAIMS =====
+      const extremeClaims = [
+        "100% sure",
+        "absolutely always",
+        "completely impossible",
+        "definitively true",
+        "always happens",
+        "never happens"
       ];
-      factualErrors.forEach(error => {
-        if (combined.includes(error.wrong)) hallucScore += 35;
-      });
+      if (extremeClaims.some(c => response.includes(c)) && response.length < 100) {
+        hallucScore += 20; // Short extreme claims often wrong
+      }
 
-      // 8. Response doesn't match prompt intent
-      if (prompt.includes("what") && response.length < 20) hallucScore += 15; // Vague answer to specific question
-      if (prompt.includes("how") && !response.includes("step") && !response.includes("way") && response.length < 50) hallucScore += 15;
+      // ===== MADE-UP SOURCES =====
+      if (response.includes("according to") && !response.includes("wikipedia") && !response.includes("encyclopedia") && response.length < 100) {
+        hallucScore += 25;
+      }
 
-      // 9. Excessive uncertainty (e.g., hedging everything)
-      const uncertainWords = ["might", "could", "possibly", "perhaps", "maybe"];
-      const uncertainCount = uncertainWords.filter(w => response.includes(w)).length;
-      if (uncertainCount >= 3) hallucScore += 20;
+      // ===== RESPONSE TOO DIFFERENT FROM QUESTION TOPIC =====
+      const promptWords = prompt.split(" ").slice(0, 5); // First 5 words of question
+      const matchingWords = promptWords.filter(w => response.includes(w) && w.length > 3).length;
+      if (matchingWords === 0 && prompt.length > 15 && response.length > 30) {
+        hallucScore += 50; // Response about completely different topic
+      }
 
-      // Determine verdict based on hallucination score
-      finalVerdict = hallucScore >= 30 ? "hallucination" : "verified";
+      // ===== DETERMINE VERDICT =====
+      finalVerdict = hallucScore >= 25 ? "hallucination" : "verified";
       
       setStatus({ 
         type: "loading", 
         message: finalVerdict === "hallucination" 
           ? `⚠️ HALLUCINATION DETECTED (Score: ${hallucScore})` 
-          : `✅ RESPONSE VERIFIED (Confidence: ${hallucScore < 15 ? "High" : "Medium"})`
+          : `✅ RESPONSE VERIFIED (Confidence: ${hallucScore < 10 ? "High" : "Medium"})`
       });
       await new Promise(r => setTimeout(r, 800));
     }
