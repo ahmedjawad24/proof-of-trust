@@ -29,11 +29,8 @@ import {
   Layers
 } from "lucide-react";
 import {
-  Transaction,
-  SystemProgram,
   PublicKey,
   LAMPORTS_PER_SOL,
-  TransactionInstruction,
 } from "@solana/web3.js";
 
 
@@ -227,46 +224,7 @@ export default function ProofOfTrustApp() {
     }
 
     try {
-      let signature = null;
-      
-      if (connected && publicKey) {
-        setStatus({ type: "loading", message: "⛓️ Anchoring to Solana (Devnet)..." });
-        
-        const verdict_text = finalVerdict === "verified" ? "VERIFIED" : "HALLUCINATION";
-        const memoText = `POT|${input.model}|${verdict_text}|${input.confidence}`;
-        
-        try {
-          // Create transaction WITHOUT blockhash - let Phantom handle it
-          const tx = new Transaction().add(
-            new TransactionInstruction({
-              keys: [{ pubkey: publicKey, isSigner: true, isWritable: false }],
-              programId: new PublicKey("Memo1UhkJR6FEZeaasQRuetnUsnZUPUv6A27f7W2GE7"),
-              data: Buffer.from(memoText, "utf-8"),
-            })
-          );
-
-          // Phantom will handle blockhash, fees, and signing
-          signature = await sendTransaction(tx, connection);
-          
-          setStatus({ type: "loading", message: "⏳ Confirming transaction..." });
-          
-          // Wait for confirmation
-          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("finalized");
-          await connection.confirmTransaction(
-            {
-              signature,
-              blockhash,
-              lastValidBlockHeight,
-            },
-            "confirmed"
-          );
-        } catch (txError: any) {
-          console.error("Transaction error details:", txError);
-          const errorMsg = txError?.message || txError?.toString() || "Transaction failed";
-          throw new Error(`Transaction failed: ${errorMsg}`);
-        }
-      }
-
+      // Store audit locally (no blockchain transaction needed for MVP)
       const newAudit = { 
         id: Date.now(),
         model: input.model,
@@ -274,9 +232,8 @@ export default function ProofOfTrustApp() {
         response: input.response.slice(0, 150),
         verdict: finalVerdict,
         confidence: input.confidence,
-        signature, 
         time: new Date().toLocaleTimeString(), 
-        isAnchored: !!signature 
+        isAnchored: false
       };
       
       setHistory(prev => [newAudit, ...prev].slice(0, 20));
@@ -296,13 +253,9 @@ export default function ProofOfTrustApp() {
         }
       }));
 
-      const successMsg = !signature 
-        ? "✅ Local audit recorded successfully."
-        : "🚀 Audit anchored to Solana blockchain!";
-      
       setStatus({ 
         type: "success", 
-        message: successMsg
+        message: `✅ Audit recorded successfully - ${finalVerdict === "verified" ? "VERIFIED" : "HALLUCINATION DETECTED"}` 
       });
       setInput({ prompt: "", response: "", model: "GPT-4o", confidence: 75 });
       
@@ -311,12 +264,12 @@ export default function ProofOfTrustApp() {
       console.error("Error:", err);
       setStatus({ 
         type: "error", 
-        message: `❌ Error: ${err.message?.slice(0, 50) || "Transaction failed"}` 
+        message: `❌ Error: ${err.message || "Something went wrong"}` 
       });
     } finally {
       setLoading(false);
     }
-  }, [input, connected, publicKey, connection, sendTransaction]);
+  }, [input, connected, publicKey, connection]);
 
   const getTrustPercentage = () => {
     if (totalAudits === 0) return 0;
