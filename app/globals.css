@@ -11,19 +11,19 @@
 }
 
 :root {
-  --bg: #080808;
+  --bg: #0f1419;
   --text: #ffffff;
   --text-muted: #94a3b8;
   --primary: #6366f1;
   --success: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
-  --card-bg: #111111;
-  --border: rgba(255, 255, 255, 0.1);
+  --card-bg: #1a232f;
+  --border: rgba(255, 255, 255, 0.12);
   --radius: 12px;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.7);
 }
 
 [data-theme="light"] {
