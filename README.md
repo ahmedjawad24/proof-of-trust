@@ -5,7 +5,8 @@
 > **Hackathon Entry:** Solana $10,000 Global Track  
 > **Built with:** Rust/Anchor + Next.js 15  
 > **Live Demo:** Deploy to Vercel (instructions below)  
-> **Status:** Ready for Devnet Deployment
+> **Status:** ✅ Deployed to Solana Devnet  
+> **Program ID:** `xSmeQLCwoyYbctUNBSqAG4k63sqUxPY3ZMo3X38tz`
 
 ---
 

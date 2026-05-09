@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("Audit11111111111111111111111111111111111111");
+declare_id!("xSmeQLCwoyYbctUNBSqAG4k63sqUxPY3ZMo3X38tz");
 
 #[program]
 pub mod proof_of_trust {
