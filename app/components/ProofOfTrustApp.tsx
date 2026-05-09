@@ -47,6 +47,8 @@ export default function ProofOfTrustApp() {
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const [history, setHistory] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("audit");
+  const [selectedRecord, setSelectedRecord] = useState<any>(null); // For viewing details
+  const [editingRecord, setEditingRecord] = useState<any>(null); // For editing
   const [modelStats, setModelStats] = useState<any>({
     "GPT-4o": { verified: 0, hallucinations: 0 },
     "Claude 3.5": { verified: 0, hallucinations: 0 },
@@ -324,6 +326,46 @@ export default function ProofOfTrustApp() {
       setLoading(false);
     }
   }, [input, connected, publicKey, connection]);
+
+  // Delete audit record
+  const handleDeleteAudit = (id: number) => {
+    setHistory(prev => {
+      const updated = prev.filter(record => record.id !== id);
+      localStorage.setItem("pot-v5-data", JSON.stringify({ trustScore, totalAudits: totalAudits - 1, history: updated, modelStats }));
+      return updated;
+    });
+    setSelectedRecord(null);
+  };
+
+  // Edit audit record - load it back into form
+  const handleEditAudit = (record: any) => {
+    setInput({
+      prompt: record.prompt,
+      response: record.response,
+      model: record.model,
+      confidence: record.confidence
+    });
+    setEditingRecord(record);
+    setActiveTab("audit");
+  };
+
+  // Save edited audit
+  const handleSaveEdit = () => {
+    if (!editingRecord) return;
+    
+    const updated = history.map(record => 
+      record.id === editingRecord.id 
+        ? { ...record, prompt: input.prompt, response: input.response, model: input.model, confidence: input.confidence }
+        : record
+    );
+    
+    setHistory(updated);
+    localStorage.setItem("pot-v5-data", JSON.stringify({ trustScore, totalAudits, history: updated, modelStats }));
+    setEditingRecord(null);
+    setInput({ prompt: "", response: "", model: "GPT-4o", confidence: 75 });
+    setStatus({ type: "success", message: "✅ Audit updated successfully!" });
+    setTimeout(() => setStatus({ type: "idle", message: "" }), 3000);
+  };
 
   const getTrustPercentage = () => {
     if (totalAudits === 0) return 0;
@@ -840,88 +882,143 @@ export default function ProofOfTrustApp() {
               </AnimatePresence>
 
               {/* Action Buttons */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '12px', marginBottom: '0' }}>
-                <button 
-                  onClick={() => handleAudit("auto")} 
-                  disabled={loading || !input.prompt || !input.response}
-                  style={{
-                    padding: '14px 28px',
-                    background: loading || !input.prompt || !input.response ? 'rgba(99, 102, 241, 0.3)' : 'var(--primary)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 'var(--radius)',
-                    fontWeight: 700,
-                    cursor: loading || !input.prompt || !input.response ? 'not-allowed' : 'pointer',
-                    opacity: loading || !input.prompt || !input.response ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'all 0.3s ease',
-                    fontSize: '0.95rem',
-                    fontWeight: 700,
-                    boxShadow: 'var(--shadow-sm)',
-                    letterSpacing: '0.3px'
-                  }}
-                  onMouseEnter={(e) => !loading && input.prompt && input.response && (e.currentTarget.style.boxShadow = 'var(--shadow)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
-                >
-                  <Cpu size={18} />
-                  {loading ? "Processing..." : "🚀 Analyze"}
-                </button>
-                
-                <button 
-                  onClick={() => handleAudit("verified")} 
-                  disabled={loading || !input.prompt || !input.response}
-                  title="Mark response as factually correct"
-                  style={{
-                    padding: '14px 20px',
-                    background: loading || !input.prompt || !input.response ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                    color: 'var(--success)',
-                    border: loading || !input.prompt || !input.response ? '2px solid rgba(16, 185, 129, 0.5)' : '2px solid var(--success)',
-                    borderRadius: 'var(--radius)',
-                    fontWeight: 700,
-                    cursor: loading || !input.prompt || !input.response ? 'not-allowed' : 'pointer',
-                    opacity: loading || !input.prompt || !input.response ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s ease',
-                    fontSize: '0.9rem'
-                  }}
-                  onMouseEnter={(e) => !loading && input.prompt && input.response && (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)', e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)', e.currentTarget.style.boxShadow = 'none')}
-                >
-                  <CheckCircle2 size={16} />
-                  ✓ Verify
-                </button>
-                
-                <button 
-                  onClick={() => handleAudit("hallucination")} 
-                  disabled={loading || !input.prompt || !input.response}
-                  title="Mark response as containing hallucinations"
-                  style={{
-                    padding: '14px 20px',
-                    background: loading || !input.prompt || !input.response ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                    color: 'var(--danger)',
-                    border: loading || !input.prompt || !input.response ? '2px solid rgba(239, 68, 68, 0.5)' : '2px solid var(--danger)',
-                    borderRadius: 'var(--radius)',
-                    fontWeight: 700,
-                    cursor: loading || !input.prompt || !input.response ? 'not-allowed' : 'pointer',
-                    opacity: loading || !input.prompt || !input.response ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s ease',
-                    fontSize: '0.9rem'
-                  }}
-                  onMouseEnter={(e) => !loading && input.prompt && input.response && (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)', e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)', e.currentTarget.style.boxShadow = 'none')}
-                >
-                  <AlertTriangle size={16} />
-                  ⚠ Flag
-                </button>
-              </div>
+              {editingRecord ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '12px', marginBottom: '0' }}>
+                  <button 
+                    onClick={() => handleSaveEdit()} 
+                    disabled={loading}
+                    style={{
+                      padding: '14px 28px',
+                      background: 'var(--success)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--radius)',
+                      fontWeight: 700,
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      transition: 'all 0.3s ease',
+                      fontSize: '0.95rem',
+                      boxShadow: 'var(--shadow-sm)',
+                      letterSpacing: '0.3px'
+                    }}
+                    onMouseEnter={(e) => !loading && (e.currentTarget.style.boxShadow = 'var(--shadow)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
+                  >
+                    <CheckCircle2 size={18} />
+                    Save Changes
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setEditingRecord(null);
+                      setInput({ prompt: '', response: '', model: 'GPT-4o', confidence: 75 });
+                    }} 
+                    style={{
+                      padding: '14px 20px',
+                      background: 'transparent',
+                      color: 'var(--text-muted)',
+                      border: '2px solid var(--border)',
+                      borderRadius: 'var(--radius)',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease',
+                      fontSize: '0.9rem'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--primary)', e.currentTarget.style.color = 'var(--primary)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)', e.currentTarget.style.color = 'var(--text-muted)')}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '12px', marginBottom: '0' }}>
+                  <button 
+                    onClick={() => handleAudit("auto")} 
+                    disabled={loading || !input.prompt || !input.response}
+                    style={{
+                      padding: '14px 28px',
+                      background: loading || !input.prompt || !input.response ? 'rgba(99, 102, 241, 0.3)' : 'var(--primary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--radius)',
+                      fontWeight: 700,
+                      cursor: loading || !input.prompt || !input.response ? 'not-allowed' : 'pointer',
+                      opacity: loading || !input.prompt || !input.response ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      transition: 'all 0.3s ease',
+                      fontSize: '0.95rem',
+                      boxShadow: 'var(--shadow-sm)',
+                      letterSpacing: '0.3px'
+                    }}
+                    onMouseEnter={(e) => !loading && input.prompt && input.response && (e.currentTarget.style.boxShadow = 'var(--shadow)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
+                  >
+                    <Cpu size={18} />
+                    {loading ? "Processing..." : "🚀 Analyze"}
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleAudit("verified")} 
+                    disabled={loading || !input.prompt || !input.response}
+                    title="Mark response as factually correct"
+                    style={{
+                      padding: '14px 20px',
+                      background: loading || !input.prompt || !input.response ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      color: 'var(--success)',
+                      border: loading || !input.prompt || !input.response ? '2px solid rgba(16, 185, 129, 0.5)' : '2px solid var(--success)',
+                      borderRadius: 'var(--radius)',
+                      fontWeight: 700,
+                      cursor: loading || !input.prompt || !input.response ? 'not-allowed' : 'pointer',
+                      opacity: loading || !input.prompt || !input.response ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease',
+                      fontSize: '0.9rem'
+                    }}
+                    onMouseEnter={(e) => !loading && input.prompt && input.response && (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)', e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)', e.currentTarget.style.boxShadow = 'none')}
+                  >
+                    <CheckCircle2 size={16} />
+                    ✓ Verify
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleAudit("hallucination")} 
+                    disabled={loading || !input.prompt || !input.response}
+                    title="Mark response as containing hallucinations"
+                    style={{
+                      padding: '14px 20px',
+                      background: loading || !input.prompt || !input.response ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                      color: 'var(--danger)',
+                      border: loading || !input.prompt || !input.response ? '2px solid rgba(239, 68, 68, 0.5)' : '2px solid var(--danger)',
+                      borderRadius: 'var(--radius)',
+                      fontWeight: 700,
+                      cursor: loading || !input.prompt || !input.response ? 'not-allowed' : 'pointer',
+                      opacity: loading || !input.prompt || !input.response ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease',
+                      fontSize: '0.9rem'
+                    }}
+                    onMouseEnter={(e) => !loading && input.prompt && input.response && (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)', e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)', e.currentTarget.style.boxShadow = 'none')}
+                  >
+                    <AlertTriangle size={16} />
+                    ⚠ Flag
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Audit History */}
@@ -989,8 +1086,9 @@ export default function ProofOfTrustApp() {
                         borderRadius: 'var(--radius)',
                         transition: 'all 0.2s ease',
                         boxShadow: 'var(--shadow-sm)',
-                        cursor: 'default'
+                        cursor: 'pointer'
                       }}
+                      onClick={() => setSelectedRecord(item)}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.borderColor = 'var(--primary)';
                         e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
@@ -1001,7 +1099,7 @@ export default function ProofOfTrustApp() {
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
                           <span style={{ padding: '4px 10px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 600, color: 'var(--primary)' }}>
                             {item.model}
                           </span>
@@ -1028,11 +1126,69 @@ export default function ProofOfTrustApp() {
                             </span>
                           )}
                         </div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>{item.time}</span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditAudit(item);
+                            }}
+                            style={{
+                              padding: '6px 10px',
+                              background: 'rgba(99, 102, 241, 0.1)',
+                              border: '1px solid var(--primary)',
+                              borderRadius: '4px',
+                              color: 'var(--primary)',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--primary)';
+                              e.currentTarget.style.color = 'white';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
+                              e.currentTarget.style.color = 'var(--primary)';
+                            }}
+                            title="Edit this audit"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteAudit(item.id);
+                            }}
+                            style={{
+                              padding: '6px 10px',
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid var(--danger)',
+                              borderRadius: '4px',
+                              color: 'var(--danger)',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--danger)';
+                              e.currentTarget.style.color = 'white';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                              e.currentTarget.style.color = 'var(--danger)';
+                            }}
+                            title="Delete this audit"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                       <p style={{ fontSize: '0.875rem', color: 'var(--text)', marginBottom: '10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4 }}>
                         "{item.prompt}"
                       </p>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{item.time}</p>
                       {item.signature && (
                         <a 
                           href={`https://explorer.solana.com/tx/${item.signature}?cluster=devnet`} 
@@ -1059,6 +1215,172 @@ export default function ProofOfTrustApp() {
                 </div>
               )}
             </div>
+
+            {/* Detail Modal */}
+            <AnimatePresence>
+              {selectedRecord && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                    backdropFilter: 'blur(4px)'
+                  }}
+                  onClick={() => setSelectedRecord(null)}
+                >
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.9, opacity: 0 }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      background: 'var(--card-bg)',
+                      border: '2px solid var(--primary)',
+                      borderRadius: 'var(--radius)',
+                      padding: '32px',
+                      maxWidth: '600px',
+                      width: '90vw',
+                      maxHeight: '80vh',
+                      overflowY: 'auto',
+                      boxShadow: 'var(--shadow-lg)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text)', margin: 0 }}>Audit Details</h3>
+                      <button
+                        onClick={() => setSelectedRecord(null)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          fontSize: '1.5rem',
+                          padding: 0,
+                          width: '32px',
+                          height: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Model</label>
+                      <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', color: 'var(--text)' }}>{selectedRecord.model}</div>
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Prompt</label>
+                      <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedRecord.prompt}</div>
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>AI Response</label>
+                      <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedRecord.response}</div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                      <div>
+                        <label style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Verdict</label>
+                        <div style={{
+                          padding: '12px',
+                          background: selectedRecord.verdict === "verified" ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                          borderRadius: 'var(--radius)',
+                          border: `1px solid ${selectedRecord.verdict === "verified" ? 'var(--success)' : 'var(--danger)'}`,
+                          color: selectedRecord.verdict === "verified" ? 'var(--success)' : 'var(--danger)',
+                          fontWeight: 700
+                        }}>
+                          {selectedRecord.verdict === "verified" ? "✓ Verified" : "⚠ Hallucination"}
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>Confidence</label>
+                        <div style={{ padding: '12px', background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', color: 'var(--text)' }}>{selectedRecord.confidence}%</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => {
+                          handleEditAudit(selectedRecord);
+                          setSelectedRecord(null);
+                        }}
+                        style={{
+                          padding: '10px 20px',
+                          background: 'var(--primary)',
+                          border: 'none',
+                          borderRadius: 'var(--radius)',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleDeleteAudit(selectedRecord.id);
+                          setSelectedRecord(null);
+                        }}
+                        style={{
+                          padding: '10px 20px',
+                          background: 'var(--danger)',
+                          border: 'none',
+                          borderRadius: 'var(--radius)',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        onClick={() => setSelectedRecord(null)}
+                        style={{
+                          padding: '10px 20px',
+                          background: 'transparent',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius)',
+                          color: 'var(--text)',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--card-bg)';
+                          e.currentTarget.style.borderColor = 'var(--primary)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
