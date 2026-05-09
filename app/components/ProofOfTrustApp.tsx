@@ -236,13 +236,8 @@ export default function ProofOfTrustApp() {
         const memoText = `POT|${input.model}|${verdict_text}|${input.confidence}`;
         
         try {
-          // Get recent blockhash first
-          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("finalized");
-          
-          const tx = new Transaction({
-            recentBlockhash: blockhash,
-            feePayer: publicKey,
-          }).add(
+          // Create transaction WITHOUT blockhash - let Phantom handle it
+          const tx = new Transaction().add(
             new TransactionInstruction({
               keys: [{ pubkey: publicKey, isSigner: true, isWritable: false }],
               programId: new PublicKey("Memo1UhkJR6FEZeaasQRuetnUsnZUPUv6A27f7W2GE7"),
@@ -250,11 +245,13 @@ export default function ProofOfTrustApp() {
             })
           );
 
+          // Phantom will handle blockhash, fees, and signing
           signature = await sendTransaction(tx, connection);
           
           setStatus({ type: "loading", message: "⏳ Confirming transaction..." });
           
-          // Confirm with proper parameters
+          // Wait for confirmation
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("finalized");
           await connection.confirmTransaction(
             {
               signature,
@@ -264,8 +261,9 @@ export default function ProofOfTrustApp() {
             "confirmed"
           );
         } catch (txError: any) {
-          console.error("Transaction error:", txError);
-          throw new Error(txError.message || "Transaction failed");
+          console.error("Transaction error details:", txError);
+          const errorMsg = txError?.message || txError?.toString() || "Transaction failed";
+          throw new Error(`Transaction failed: ${errorMsg}`);
         }
       }
 
